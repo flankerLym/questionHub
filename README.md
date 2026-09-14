@@ -1,0 +1,1 @@
+SpringBoot + SQLite/local persistence migration. Run mvn spring-boot:run. Build frontend separately and copy dist to static.
