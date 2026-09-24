@@ -1,0 +1,5 @@
+# 建议合并到仓库根 .gitignore
+.idea/
+target/
+desktop-app/target/
+*.iml
