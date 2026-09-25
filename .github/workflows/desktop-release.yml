@@ -35,20 +35,34 @@ jobs:
           New-Item -ItemType Directory -Force desktop-app/target/app | Out-Null
           Copy-Item desktop-app/target/questionhub-desktop.jar desktop-app/target/app/questionhub-desktop.jar -Force
 
+      - name: Verify launcher is packaged
+        run: |
+          $entries = jar tf desktop-app/target/questionhub-desktop.jar
+          if ($entries -notcontains 'com/questionhub/desktop/Launcher.class') {
+            throw 'Launcher.class is missing from questionhub-desktop.jar'
+          }
+
       - name: Build app image with bundled Java runtime
         run: |
           $version = "${{ github.ref_name }}" -replace '^v',''
-          if (-not $version -or $version -eq '${{ github.ref_name }}') { $version = '1.0.0' }
+          if (-not $version -or $version -eq '${{ github.ref_name }}') { $version = '1.0.1' }
           jpackage `
             --type app-image `
             --name QuestionHub `
             --dest desktop-app/target/jpackage `
             --input desktop-app/target/app `
             --main-jar questionhub-desktop.jar `
-            --main-class com.questionhub.desktop.QuestionHubApp `
+            --main-class com.questionhub.desktop.Launcher `
             --app-version $version `
             --vendor flankerLym `
             --java-options "-Dfile.encoding=UTF-8"
+
+      - name: Verify native launcher config
+        run: |
+          $cfg = Get-Content desktop-app/target/jpackage/QuestionHub/app/QuestionHub.cfg -Raw
+          if ($cfg -notmatch 'app.mainclass=com\.questionhub\.desktop\.Launcher') {
+            throw 'jpackage did not use the bootstrap Launcher as the native main class'
+          }
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -56,7 +70,7 @@ jobs:
       - name: Build Windows installer
         run: |
           $version = "${{ github.ref_name }}" -replace '^v',''
-          if (-not $version -or $version -eq '${{ github.ref_name }}') { $version = '1.0.0' }
+          if (-not $version -or $version -eq '${{ github.ref_name }}') { $version = '1.0.1' }
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" "desktop-app\installer\QuestionHub.iss"
 
       - name: Build portable ZIP
