@@ -7,6 +7,7 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="question-archive" />
+        <module name="questionhub-desktop" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel target="17" />
