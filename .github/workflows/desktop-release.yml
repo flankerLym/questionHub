@@ -35,11 +35,17 @@ jobs:
           New-Item -ItemType Directory -Force desktop-app/target/app | Out-Null
           Copy-Item desktop-app/target/questionhub-desktop.jar desktop-app/target/app/questionhub-desktop.jar -Force
 
-      - name: Verify launcher is packaged
+      - name: Verify launcher and icon assets
         run: |
           $entries = jar tf desktop-app/target/questionhub-desktop.jar
           if ($entries -notcontains 'com/questionhub/desktop/Launcher.class') {
             throw 'Launcher.class is missing from questionhub-desktop.jar'
+          }
+          if ($entries -notcontains 'app-icon.png') {
+            throw 'app-icon.png is missing from questionhub-desktop.jar'
+          }
+          if (-not (Test-Path 'desktop-app/src/main/resources/app-icon.ico')) {
+            throw 'app-icon.ico is missing'
           }
 
       - name: Build app image with bundled Java runtime
@@ -53,6 +59,7 @@ jobs:
             --input desktop-app/target/app `
             --main-jar questionhub-desktop.jar `
             --main-class com.questionhub.desktop.Launcher `
+            --icon desktop-app/src/main/resources/app-icon.ico `
             --app-version $version `
             --vendor flankerLym `
             --java-options "-Dfile.encoding=UTF-8"
@@ -62,6 +69,9 @@ jobs:
           $cfg = Get-Content desktop-app/target/jpackage/QuestionHub/app/QuestionHub.cfg -Raw
           if ($cfg -notmatch 'app.mainclass=com\.questionhub\.desktop\.Launcher') {
             throw 'jpackage did not use the bootstrap Launcher as the native main class'
+          }
+          if (-not (Test-Path 'desktop-app/target/jpackage/QuestionHub/QuestionHub.exe')) {
+            throw 'QuestionHub.exe was not generated'
           }
 
       - name: Install Inno Setup

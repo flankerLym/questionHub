@@ -42,6 +42,7 @@ public final class MainView {
     private final Label currentQuestion = new Label("先从左侧选择一个问题");
     private final Label currentMeta = new Label("选择后可以在这里整理答案、思路和易错点");
     private final TextArea answer = new TextArea();
+    private final Label answerCount = new Label("0 / 50000");
     private final Button saveAnswer = new Button("保存修改");
 
     public MainView(ArchiveRepository repo, ArchiveJsonService json, Path dataDir, Runnable onLogout) {
@@ -72,19 +73,19 @@ public final class MainView {
         HBox brand = new HBox(11, mark, brandText);
         brand.setAlignment(Pos.CENTER_LEFT);
 
-        Button importBtn = softButton("导入资料");
+        Button importBtn = softButton("⇩", "导入资料");
         importBtn.setTooltip(new Tooltip("用 JSON 归档覆盖当前资料"));
         importBtn.setOnAction(e -> importJson());
 
-        Button exportBtn = softButton("备份导出");
+        Button exportBtn = softButton("⇧", "备份导出");
         exportBtn.setTooltip(new Tooltip("导出完整 JSON 归档"));
         exportBtn.setOnAction(e -> exportJson());
 
-        Button folderBtn = softButton("存储位置");
+        Button folderBtn = softButton("⌂", "存储位置");
         folderBtn.setTooltip(new Tooltip("打开本地数据目录"));
         folderBtn.setOnAction(e -> openDataDir());
 
-        Button logout = softButton("锁定资料库");
+        Button logout = softButton("◇", "锁定资料库");
         logout.setTooltip(new Tooltip("返回口令页，不退出程序"));
         logout.setOnAction(e -> onLogout.run());
 
@@ -169,8 +170,14 @@ public final class MainView {
         head.setAlignment(Pos.CENTER_LEFT);
 
         search.setPromptText("搜索问题、答案或关键词…");
-        search.getStyleClass().add("search-field");
+        search.getStyleClass().add("flat-field");
         search.textProperty().addListener((o, a, b) -> filter(b));
+        Label searchIcon = new Label("⌕");
+        searchIcon.getStyleClass().add("input-leading-icon");
+        HBox searchBox = new HBox(9, searchIcon, search);
+        searchBox.setAlignment(Pos.CENTER_LEFT);
+        searchBox.getStyleClass().addAll("input-shell", "search-shell");
+        HBox.setHgrow(search, Priority.ALWAYS);
 
         questionList.setPlaceholder(emptyState("这里还没有问题", "点击“记录问题”，把今天遇到的第一个问题记下来"));
         questionList.setCellFactory(v -> new ListCell<>() {
@@ -185,7 +192,8 @@ public final class MainView {
                 qt.setWrapText(true);
 
                 String preview = compact(q.answer());
-                Label pv = label(preview.isEmpty() ? "还没有整理答案" : preview, preview.isEmpty() ? "question-empty-answer" : "question-preview");
+                Label pv = label(preview.isEmpty() ? "还没有整理答案" : preview,
+                        preview.isEmpty() ? "question-empty-answer" : "question-preview");
                 pv.setWrapText(false);
 
                 String t = DateTimeFormatter.ofPattern("MM-dd HH:mm")
@@ -210,7 +218,7 @@ public final class MainView {
         questionList.setContextMenu(menu);
         questionList.setOnMouseClicked(e -> { if (e.getClickCount() == 2) editQuestion(); });
 
-        VBox box = panel(head, search, questionList);
+        VBox box = panel(head, searchBox, questionList);
         VBox.setVgrow(questionList, Priority.ALWAYS);
         return box;
     }
@@ -230,7 +238,25 @@ public final class MainView {
 
         answer.setWrapText(true);
         answer.setPromptText("在这里整理答案、解题思路、代码片段、容易忘记的点……");
-        answer.getStyleClass().add("answer-editor");
+        answer.getStyleClass().addAll("answer-editor", "flat-area");
+        answerCount.getStyleClass().add("char-count");
+        answer.textProperty().addListener((o, a, b) -> answerCount.setText(b.length() + " / 50000"));
+
+        Label pen = new Label("✎");
+        pen.getStyleClass().add("editor-toolbar-icon");
+        Label editorTitle = label("我的整理", "editor-toolbar-title");
+        Label editorHint = label("支持多行文本与代码片段", "editor-toolbar-hint");
+        VBox editorTitles = new VBox(1, editorTitle, editorHint);
+        HBox toolbar = new HBox(9, pen, editorTitles, spacer(), answerCount);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        toolbar.getStyleClass().add("editor-toolbar");
+
+        StackPane editorSurface = new StackPane(answer);
+        editorSurface.getStyleClass().add("editor-surface");
+        VBox.setVgrow(answer, Priority.ALWAYS);
+        VBox editorCard = new VBox(toolbar, editorSurface);
+        editorCard.getStyleClass().add("editor-card");
+        VBox.setVgrow(editorSurface, Priority.ALWAYS);
 
         Label saveHint = label("修改后点击保存，内容会写入本地 SQLite", "small-muted");
         saveAnswer.getStyleClass().add("primary-button");
@@ -238,8 +264,8 @@ public final class MainView {
         HBox actions = new HBox(10, saveHint, spacer(), saveAnswer);
         actions.setAlignment(Pos.CENTER_LEFT);
 
-        VBox box = panel(head, divider(), currentLabel, currentQuestion, currentMeta, answer, actions);
-        VBox.setVgrow(answer, Priority.ALWAYS);
+        VBox box = panel(head, divider(), currentLabel, currentQuestion, currentMeta, editorCard, actions);
+        VBox.setVgrow(editorCard, Priority.ALWAYS);
         return box;
     }
 
@@ -282,7 +308,8 @@ public final class MainView {
     private void filter(String keyword) {
         String k = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
         if (k.isEmpty()) visibleItems.setAll(allItems);
-        else visibleItems.setAll(allItems.filtered(q -> q.question().toLowerCase(Locale.ROOT).contains(k) || q.answer().toLowerCase(Locale.ROOT).contains(k)));
+        else visibleItems.setAll(allItems.filtered(q -> q.question().toLowerCase(Locale.ROOT).contains(k)
+                || q.answer().toLowerCase(Locale.ROOT).contains(k)));
         questionCount.setText(k.isEmpty() ? visibleItems.size() + " 条记录" : visibleItems.size() + " / " + allItems.size() + " 条");
     }
 
@@ -337,7 +364,7 @@ public final class MainView {
     private void createQuestion() {
         Folder f = folderList.getSelectionModel().getSelectedItem();
         if (f == null) {
-            Dialogs.info(window(), "先选择学习分类", "创建或选择一个分类后，再记录问题。这样以后复习时更容易找到。 ");
+            Dialogs.info(window(), "先选择学习分类", "创建或选择一个分类后，再记录问题。这样以后复习时更容易找到。");
             return;
         }
         try {
@@ -392,7 +419,7 @@ public final class MainView {
         try {
             json.importAndReplace(f.toPath());
             reloadFolders();
-            Dialogs.info(window(), "导入完成", "学习资料已经恢复，可以继续使用。 ");
+            Dialogs.info(window(), "导入完成", "学习资料已经恢复，可以继续使用。");
         } catch (Exception e) { fail(e); }
     }
 
@@ -405,7 +432,7 @@ public final class MainView {
         if (f == null) return;
         try {
             json.exportTo(f.toPath());
-            Dialogs.info(window(), "备份已保存", "完整学习归档已经导出。建议把重要备份同步到自己的网盘或移动硬盘。 ");
+            Dialogs.info(window(), "备份已保存", "完整学习归档已经导出。建议把重要备份同步到自己的网盘或移动硬盘。");
         } catch (Exception e) { fail(e); }
     }
 
@@ -469,8 +496,13 @@ public final class MainView {
         return r;
     }
 
-    private Button softButton(String text) {
+    private Button softButton(String icon, String text) {
         Button b = new Button(text);
+        Label i = new Label(icon);
+        i.getStyleClass().add("button-icon");
+        b.setGraphic(i);
+        b.setContentDisplay(ContentDisplay.LEFT);
+        b.setGraphicTextGap(6);
         b.getStyleClass().add("soft-button");
         return b;
     }

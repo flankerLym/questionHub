@@ -3,6 +3,7 @@ package com.questionhub.desktop;
 import com.questionhub.desktop.db.ArchiveRepository;
 import com.questionhub.desktop.db.Database;
 import com.questionhub.desktop.service.*;
+import com.questionhub.desktop.ui.AppIcons;
 import com.questionhub.desktop.ui.LoginView;
 import com.questionhub.desktop.ui.MainView;
 import javafx.application.Application;
@@ -19,6 +20,7 @@ public final class QuestionHubApp extends Application {
 
     @Override public void start(Stage primaryStage) throws Exception {
         this.stage = primaryStage;
+        AppIcons.apply(stage);
         stage.setTitle("QuestionHub · 学习问题库");
         stage.setMinWidth(1080);
         stage.setMinHeight(700);

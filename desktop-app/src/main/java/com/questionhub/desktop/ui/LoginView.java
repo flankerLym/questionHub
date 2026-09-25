@@ -42,7 +42,14 @@ public final class LoginView {
 
         PasswordField password = new PasswordField();
         password.setPromptText("输入口令后进入学习资料库");
-        password.getStyleClass().add("login-password");
+        password.getStyleClass().addAll("login-password", "flat-field");
+
+        Label lock = new Label("◆");
+        lock.getStyleClass().add("input-leading-icon");
+        HBox passwordShell = new HBox(10, lock, password);
+        passwordShell.setAlignment(Pos.CENTER_LEFT);
+        passwordShell.getStyleClass().add("input-shell");
+        HBox.setHgrow(password, Priority.ALWAYS);
 
         Label error = new Label();
         error.getStyleClass().add("error-text");
@@ -81,7 +88,7 @@ public final class LoginView {
 
         card.getChildren().addAll(
                 mark, eyebrow, title, subtitle, value,
-                separator, label, password, error, enter, shortcut, privacy
+                separator, label, passwordShell, error, enter, shortcut, privacy
         );
         root.getChildren().add(card);
     }
