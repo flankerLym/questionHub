@@ -16,6 +16,7 @@
         <jackson.version>2.20.0</jackson.version>
         <sqlite.version>3.50.3.0</sqlite.version>
         <junit.version>5.13.4</junit.version>
+        <jlatexmath.version>1.0.7</jlatexmath.version>
     </properties>
 
     <dependencies>
@@ -23,6 +24,16 @@
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
             <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scilab.forge</groupId>
+            <artifactId>jlatexmath</artifactId>
+            <version>${jlatexmath.version}</version>
         </dependency>
         <dependency>
             <groupId>org.xerial</groupId>

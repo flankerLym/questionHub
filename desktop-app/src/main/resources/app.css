@@ -147,7 +147,6 @@
     -fx-effect: dropshadow(gaussian, rgba(58, 72, 61, .05), 12, .08, 0, 3);
 }
 
-/* Modern input shell: border belongs to the container, not the raw JavaFX control. */
 .input-shell {
     -fx-background-color: #ffffff;
     -fx-border-color: #dce2da;
@@ -157,7 +156,6 @@
     -fx-min-height: 42;
     -fx-effect: dropshadow(gaussian, rgba(56,76,62,.04), 7, .05, 0, 2);
 }
-
 
 .search-shell {
     -fx-background-color: #f8faf7;
@@ -577,4 +575,101 @@
 .scroll-bar .thumb {
     -fx-background-color: #d4dad3;
     -fx-background-radius: 999;
+}
+
+
+/* ===== Answer reading / editing upgrade ===== */
+
+.question-only-card {
+    -fx-padding: 3 1;
+}
+
+.answer-content {
+    -fx-background-color: #fffefa;
+    -fx-background-radius: 0 0 14 14;
+    -fx-min-height: 420;
+}
+
+.answer-preview {
+    -fx-background-color: #fffefa;
+    -fx-border-color: transparent;
+    -fx-min-height: 420;
+    -fx-pref-height: 620;
+}
+
+.answer-editor-pane {
+    -fx-background-color: #fffefa;
+    -fx-padding: 10 12 12 12;
+    -fx-min-height: 420;
+}
+
+.answer-editor-pane .text-area {
+    -fx-min-height: 380;
+    -fx-pref-height: 560;
+}
+
+.editor-help {
+    -fx-text-fill: #78837b;
+    -fx-font-size: 10.5px;
+    -fx-background-color: #f4f7f2;
+    -fx-border-color: #e4e9e2;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 7 10;
+}
+
+.mode-badge {
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+    -fx-padding: 5 9;
+    -fx-background-radius: 999;
+}
+
+.mode-badge-read {
+    -fx-background-color: #e8f0e8;
+    -fx-text-fill: #58715f;
+}
+
+.mode-badge-edit {
+    -fx-background-color: #fff0d9;
+    -fx-text-fill: #9b6b27;
+}
+
+
+/* ===== Compact right reading area: only question + answer ===== */
+.answer-panel-clean {
+    -fx-padding: 14;
+}
+
+.question-focus-bar {
+    -fx-background-color: #f5f8f3;
+    -fx-border-color: #dfe6dc;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 10 12;
+}
+
+.question-focus-badge {
+    -fx-background-color: #dfe9df;
+    -fx-text-fill: #52705a;
+    -fx-font-size: 10px;
+    -fx-font-weight: 800;
+    -fx-padding: 5 8;
+    -fx-background-radius: 999;
+}
+
+.question-focus-text {
+    -fx-text-fill: #203026;
+    -fx-font-size: 16px;
+    -fx-font-weight: 800;
+}
+
+.answer-panel-clean .editor-card {
+    -fx-min-height: 560;
+}
+
+.answer-panel-clean .answer-content,
+.answer-panel-clean .answer-preview,
+.answer-panel-clean .answer-editor-pane {
+    -fx-min-height: 520;
 }

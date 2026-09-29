@@ -1,0 +1,44 @@
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Maven
+target/
+**/target/
+
+# Java compiled files
+*.class
+
+# Test / crash outputs
+*.dump
+*.dumpstream
+hs_err_pid*
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*~
+
+# Node / frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Flutter / Dart
+mobile-app/.dart_tool/
+mobile-app/build/
+mobile-app/.flutter-plugins
+mobile-app/.flutter-plugins-dependencies
+
+# Local IDE files
+*.iws
+*.ipr

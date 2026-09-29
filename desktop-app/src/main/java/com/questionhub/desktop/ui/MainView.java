@@ -14,14 +14,12 @@ import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
+import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
 
 import java.awt.Desktop;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 public final class MainView {
@@ -37,13 +35,21 @@ public final class MainView {
     private final ListView<Folder> folderList = new ListView<>(folders);
     private final ListView<QaItem> questionList = new ListView<>(visibleItems);
     private final TextField search = new TextField();
+
     private final Label folderTitle = new Label("问题列表");
     private final Label questionCount = new Label("0 条记录");
     private final Label currentQuestion = new Label("先从左侧选择一个问题");
-    private final Label currentMeta = new Label("选择后可以在这里整理答案、思路和易错点");
+
+    private final WebView answerPreview = new WebView();
     private final TextArea answer = new TextArea();
+    private final VBox answerEditorPane = new VBox();
     private final Label answerCount = new Label("0 / 50000");
+    private final Label answerMode = new Label("阅读模式");
+    private final Button editAnswer = new Button("编辑整理");
+    private final Button cancelAnswer = new Button("取消");
     private final Button saveAnswer = new Button("保存修改");
+
+    private boolean editingAnswer;
 
     public MainView(ArchiveRepository repo, ArchiveJsonService json, Path dataDir, Runnable onLogout) {
         this.repo = repo;
@@ -101,7 +107,8 @@ public final class MainView {
 
     private Parent workspace() {
         SplitPane split = new SplitPane(folderPane(), questionPane(), answerPane());
-        split.setDividerPositions(.19, .56);
+        // 给右侧“我的整理”更多长期阅读/代码/公式展示空间
+        split.setDividerPositions(.18, .48);
         split.getStyleClass().add("workspace");
         BorderPane.setMargin(split, new Insets(16, 16, 10, 16));
         return split;
@@ -151,6 +158,7 @@ public final class MainView {
         folderList.setContextMenu(menu);
 
         VBox box = panel(head, divider(), folderList);
+        box.setMinWidth(220);
         VBox.setVgrow(folderList, Priority.ALWAYS);
         return box;
     }
@@ -165,7 +173,7 @@ public final class MainView {
 
         HBox titleLine = new HBox(8, folderTitle, questionCount);
         titleLine.setAlignment(Pos.CENTER_LEFT);
-        VBox heading = new VBox(2, titleLine, label("把不会的、易错的、值得复习的都留下来", "section-hint"));
+        VBox heading = new VBox(2, titleLine, label("这里只显示问题，答案统一在右侧查看", "section-hint"));
         HBox head = new HBox(8, heading, spacer(), add);
         head.setAlignment(Pos.CENTER_LEFT);
 
@@ -188,21 +196,12 @@ public final class MainView {
                     setText(null);
                     return;
                 }
+                // 老板要求：问题列表只展示问题本身，不再泄露/预览答案。
                 Label qt = label(q.question(), "question-text");
                 qt.setWrapText(true);
-
-                String preview = compact(q.answer());
-                Label pv = label(preview.isEmpty() ? "还没有整理答案" : preview,
-                        preview.isEmpty() ? "question-empty-answer" : "question-preview");
-                pv.setWrapText(false);
-
-                String t = DateTimeFormatter.ofPattern("MM-dd HH:mm")
-                        .withZone(ZoneId.systemDefault())
-                        .format(Instant.ofEpochMilli(q.updatedAt()));
-                Label time = label("最近整理  " + t, "small-muted");
-
-                VBox card = new VBox(5, qt, pv, time);
-                card.setFillWidth(true);
+                qt.setMaxWidth(Double.MAX_VALUE);
+                VBox card = new VBox(qt);
+                card.getStyleClass().add("question-only-card");
                 setGraphic(card);
                 setText(null);
             }
@@ -219,53 +218,89 @@ public final class MainView {
         questionList.setOnMouseClicked(e -> { if (e.getClickCount() == 2) editQuestion(); });
 
         VBox box = panel(head, searchBox, questionList);
+        box.setMinWidth(360);
         VBox.setVgrow(questionList, Priority.ALWAYS);
         return box;
     }
 
     private Parent answerPane() {
-        Label title = label("学习笔记 / 答案", "panel-title");
-        Label hint = label("整理结论、思路、代码和易错点", "section-hint");
-        VBox heading = new VBox(2, title, hint);
-        HBox head = new HBox(8, heading, spacer());
-        head.setAlignment(Pos.CENTER_LEFT);
-
-        Label currentLabel = label("当前问题", "field-caption");
+        // 右侧只保留“问题 + 我的整理”，去掉重复标题、说明和时间信息，
+        // 把尽可能多的垂直空间留给长期阅读、代码和公式。
         currentQuestion.setWrapText(true);
-        currentQuestion.getStyleClass().add("selected-question");
-        currentMeta.getStyleClass().add("selected-meta");
-        currentMeta.setWrapText(true);
+        currentQuestion.getStyleClass().add("question-focus-text");
+
+        Label questionBadge = label("问题", "question-focus-badge");
+        HBox questionBar = new HBox(10, questionBadge, currentQuestion);
+        questionBar.setAlignment(Pos.CENTER_LEFT);
+        questionBar.getStyleClass().add("question-focus-bar");
+        HBox.setHgrow(currentQuestion, Priority.ALWAYS);
 
         answer.setWrapText(true);
-        answer.setPromptText("在这里整理答案、解题思路、代码片段、容易忘记的点……");
+        answer.setPromptText("""
+                在这里整理答案、解题思路、代码片段和公式……
+
+                代码块示例：
+                ```java
+                int ans = 0;
+                ```
+
+                LaTeX 示例：
+                行内公式 $x^2+y^2$
+                独立公式 $$\\frac{a}{b}$$
+                """);
         answer.getStyleClass().addAll("answer-editor", "flat-area");
         answerCount.getStyleClass().add("char-count");
         answer.textProperty().addListener((o, a, b) -> answerCount.setText(b.length() + " / 50000"));
 
+        Label editorHelp = label("支持普通文本、```代码块```、行内 $LaTeX$ 和 $$独立公式$$", "editor-help");
+        answerEditorPane.getChildren().setAll(editorHelp, answer);
+        answerEditorPane.setSpacing(8);
+        answerEditorPane.getStyleClass().add("answer-editor-pane");
+        VBox.setVgrow(answer, Priority.ALWAYS);
+
+        answerPreview.setContextMenuEnabled(false);
+        answerPreview.setMinHeight(520);
+        answerPreview.setPrefHeight(720);
+        answerPreview.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+        answerPreview.getStyleClass().add("answer-preview");
+
+        StackPane content = new StackPane(answerPreview, answerEditorPane);
+        content.getStyleClass().add("answer-content");
+        content.setMinHeight(520);
+        VBox.setVgrow(content, Priority.ALWAYS);
+
         Label pen = new Label("✎");
         pen.getStyleClass().add("editor-toolbar-icon");
         Label editorTitle = label("我的整理", "editor-toolbar-title");
-        Label editorHint = label("支持多行文本与代码片段", "editor-toolbar-hint");
+        Label editorHint = label("代码与 LaTeX 会在阅读模式中排版显示", "editor-toolbar-hint");
         VBox editorTitles = new VBox(1, editorTitle, editorHint);
-        HBox toolbar = new HBox(9, pen, editorTitles, spacer(), answerCount);
+
+        answerMode.getStyleClass().add("mode-badge");
+        editAnswer.getStyleClass().add("soft-button");
+        editAnswer.setOnAction(e -> beginAnswerEdit());
+
+        cancelAnswer.getStyleClass().add("soft-button");
+        cancelAnswer.setOnAction(e -> cancelAnswerEdit());
+
+        saveAnswer.getStyleClass().add("primary-button");
+        saveAnswer.setOnAction(e -> saveAnswer());
+
+        HBox toolbar = new HBox(9, pen, editorTitles, spacer(), answerMode, answerCount, cancelAnswer, editAnswer, saveAnswer);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.getStyleClass().add("editor-toolbar");
 
-        StackPane editorSurface = new StackPane(answer);
-        editorSurface.getStyleClass().add("editor-surface");
-        VBox.setVgrow(answer, Priority.ALWAYS);
-        VBox editorCard = new VBox(toolbar, editorSurface);
+        VBox editorCard = new VBox(toolbar, content);
         editorCard.getStyleClass().add("editor-card");
-        VBox.setVgrow(editorSurface, Priority.ALWAYS);
+        VBox.setVgrow(content, Priority.ALWAYS);
 
-        Label saveHint = label("修改后点击保存，内容会写入本地 SQLite", "small-muted");
-        saveAnswer.getStyleClass().add("primary-button");
-        saveAnswer.setOnAction(e -> saveAnswer());
-        HBox actions = new HBox(10, saveHint, spacer(), saveAnswer);
-        actions.setAlignment(Pos.CENTER_LEFT);
-
-        VBox box = panel(head, divider(), currentLabel, currentQuestion, currentMeta, editorCard, actions);
+        VBox box = new VBox(10, questionBar, editorCard);
+        box.getStyleClass().addAll("panel", "answer-panel-clean");
+        box.setPadding(new Insets(14));
+        box.setMinWidth(560);
         VBox.setVgrow(editorCard, Priority.ALWAYS);
+
+        setAnswerEditMode(false);
+        renderAnswer("", "选择左侧问题后，这里会展示你的整理内容。");
         return box;
     }
 
@@ -294,39 +329,110 @@ public final class MainView {
     }
 
     private void loadQuestions(Folder folder) {
+        loadQuestions(folder, null);
+    }
+
+    private void loadQuestions(Folder folder, String selectedId) {
         search.clear();
         if (folder == null) { clearQuestions(); return; }
         folderTitle.setText(folder.name());
         try {
             allItems.setAll(repo.questions(folder.id()));
             filter("");
-            if (!visibleItems.isEmpty()) questionList.getSelectionModel().select(0);
-            else showAnswer(null);
+
+            if (visibleItems.isEmpty()) {
+                showAnswer(null);
+                return;
+            }
+
+            int idx = 0;
+            if (selectedId != null) {
+                for (int i = 0; i < visibleItems.size(); i++) {
+                    if (selectedId.equals(visibleItems.get(i).id())) {
+                        idx = i;
+                        break;
+                    }
+                }
+            }
+            questionList.getSelectionModel().select(idx);
         } catch (Exception e) { fail(e); }
     }
 
     private void filter(String keyword) {
         String k = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
         if (k.isEmpty()) visibleItems.setAll(allItems);
-        else visibleItems.setAll(allItems.filtered(q -> q.question().toLowerCase(Locale.ROOT).contains(k)
-                || q.answer().toLowerCase(Locale.ROOT).contains(k)));
-        questionCount.setText(k.isEmpty() ? visibleItems.size() + " 条记录" : visibleItems.size() + " / " + allItems.size() + " 条");
+        else visibleItems.setAll(allItems.filtered(q ->
+                q.question().toLowerCase(Locale.ROOT).contains(k)
+                        || q.answer().toLowerCase(Locale.ROOT).contains(k)));
+        questionCount.setText(k.isEmpty()
+                ? visibleItems.size() + " 条记录"
+                : visibleItems.size() + " / " + allItems.size() + " 条");
     }
 
     private void showAnswer(QaItem item) {
+        setAnswerEditMode(false);
         boolean ok = item != null;
+
         currentQuestion.setText(ok ? item.question() : "先从左侧选择一个问题");
         if (ok) {
-            String t = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-                    .withZone(ZoneId.systemDefault())
-                    .format(Instant.ofEpochMilli(item.updatedAt()));
-            currentMeta.setText("最近整理于 " + t + " · 可以直接在下方继续补充");
+            answer.setText(item.answer());
+            renderAnswer(item.answer(), "这条问题还没有整理答案，点击“编辑整理”开始记录。");
         } else {
-            currentMeta.setText("选择后可以在这里整理答案、思路和易错点");
+            answer.setText("");
+            renderAnswer("", "选择左侧问题后，这里会展示你的整理内容。");
         }
-        answer.setText(ok ? item.answer() : "");
-        answer.setDisable(!ok);
+
+        editAnswer.setDisable(!ok);
         saveAnswer.setDisable(!ok);
+    }
+
+    private void beginAnswerEdit() {
+        QaItem item = questionList.getSelectionModel().getSelectedItem();
+        if (item == null) return;
+        answer.setText(item.answer());
+        setAnswerEditMode(true);
+        answer.requestFocus();
+        answer.positionCaret(answer.getLength());
+    }
+
+    private void cancelAnswerEdit() {
+        QaItem item = questionList.getSelectionModel().getSelectedItem();
+        if (item != null) {
+            answer.setText(item.answer());
+            renderAnswer(item.answer(), "这条问题还没有整理答案，点击“编辑整理”开始记录。");
+        }
+        setAnswerEditMode(false);
+    }
+
+    private void setAnswerEditMode(boolean editing) {
+        editingAnswer = editing;
+
+        answerPreview.setVisible(!editing);
+        answerPreview.setManaged(!editing);
+        answerEditorPane.setVisible(editing);
+        answerEditorPane.setManaged(editing);
+
+        editAnswer.setVisible(!editing);
+        editAnswer.setManaged(!editing);
+        saveAnswer.setVisible(editing);
+        saveAnswer.setManaged(editing);
+        cancelAnswer.setVisible(editing);
+        cancelAnswer.setManaged(editing);
+        answerCount.setVisible(editing);
+        answerCount.setManaged(editing);
+
+        answerMode.setText(editing ? "编辑模式" : "阅读模式");
+        answerMode.getStyleClass().removeAll("mode-badge-edit", "mode-badge-read");
+        answerMode.getStyleClass().add(editing ? "mode-badge-edit" : "mode-badge-read");
+
+        // 编辑期间锁定导航，避免切换问题导致未保存内容丢失。
+        folderList.setDisable(editing);
+        questionList.setDisable(editing);
+        search.setDisable(editing);
+    }
+
+    private void renderAnswer(String text, String emptyText) {
+        answerPreview.getEngine().loadContent(AnswerRenderer.toHtml(text, emptyText), "text/html");
     }
 
     private void createFolder() {
@@ -356,7 +462,8 @@ public final class MainView {
     private void deleteFolder() {
         Folder f = folderList.getSelectionModel().getSelectedItem();
         if (f == null) return;
-        if (!Dialogs.confirm(window(), "删除这个学习分类？", "“" + f.name() + "”中的全部问题和答案都会一起删除。此操作无法撤销。")) return;
+        if (!Dialogs.confirm(window(), "删除这个学习分类？",
+                "“" + f.name() + "”中的全部问题和答案都会一起删除。此操作无法撤销。")) return;
         try { repo.deleteFolder(f.id()); reloadFolders(); }
         catch (Exception e) { fail(e); }
     }
@@ -373,49 +480,64 @@ public final class MainView {
             String q = Validation.question(r.get().question());
             String a = Validation.answer(r.get().answer());
             long now = System.currentTimeMillis();
-            repo.upsertQuestion(new QaItem(Ids.create("qa"), f.id(), q, a, now, now));
-            loadQuestions(f);
+            QaItem created = new QaItem(Ids.create("qa"), f.id(), q, a, now, now);
+            repo.upsertQuestion(created);
+            loadQuestions(f, created.id());
         } catch (Exception e) { fail(e); }
     }
 
     private void editQuestion() {
         QaItem item = questionList.getSelectionModel().getSelectedItem();
-        if (item == null) return;
+        if (item == null || editingAnswer) return;
         try {
             var r = Dialogs.question(window(), "编辑学习记录", item.question(), item.answer());
             if (r.isEmpty()) return;
-            repo.upsertQuestion(item.withContent(
+            QaItem updated = item.withContent(
                     Validation.question(r.get().question()),
                     Validation.answer(r.get().answer()),
-                    System.currentTimeMillis()));
-            loadQuestions(folderList.getSelectionModel().getSelectedItem());
+                    System.currentTimeMillis());
+            repo.upsertQuestion(updated);
+            loadQuestions(folderList.getSelectionModel().getSelectedItem(), item.id());
         } catch (Exception e) { fail(e); }
     }
 
     private void deleteQuestion() {
         QaItem item = questionList.getSelectionModel().getSelectedItem();
-        if (item == null) return;
-        if (!Dialogs.confirm(window(), "删除这条学习记录？", "确定删除“" + item.question() + "”吗？删除后无法恢复。")) return;
-        try { repo.deleteQuestion(item.id()); loadQuestions(folderList.getSelectionModel().getSelectedItem()); }
-        catch (Exception e) { fail(e); }
+        if (item == null || editingAnswer) return;
+        if (!Dialogs.confirm(window(), "删除这条学习记录？",
+                "确定删除“" + item.question() + "”吗？删除后无法恢复。")) return;
+        try {
+            repo.deleteQuestion(item.id());
+            loadQuestions(folderList.getSelectionModel().getSelectedItem());
+        } catch (Exception e) { fail(e); }
     }
 
     private void saveAnswer() {
         QaItem item = questionList.getSelectionModel().getSelectedItem();
         if (item == null) return;
         try {
-            repo.upsertQuestion(item.withContent(item.question(), Validation.answer(answer.getText()), System.currentTimeMillis()));
-            loadQuestions(folderList.getSelectionModel().getSelectedItem());
+            QaItem updated = item.withContent(
+                    item.question(),
+                    Validation.answer(answer.getText()),
+                    System.currentTimeMillis());
+            repo.upsertQuestion(updated);
+            setAnswerEditMode(false);
+            loadQuestions(folderList.getSelectionModel().getSelectedItem(), item.id());
         } catch (Exception e) { fail(e); }
     }
 
     private void importJson() {
+        if (editingAnswer) {
+            Dialogs.info(window(), "请先保存当前整理", "正在编辑内容，请先保存或取消编辑后再导入资料。");
+            return;
+        }
         FileChooser fc = new FileChooser();
         fc.setTitle("导入 QuestionHub 学习归档");
         fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("QuestionHub JSON 归档", "*.json"));
         var f = fc.showOpenDialog(window());
         if (f == null) return;
-        if (!Dialogs.confirm(window(), "导入并覆盖当前资料？", "导入会用所选归档完整替换当前学习分类和问答。建议先执行一次“备份导出”。")) return;
+        if (!Dialogs.confirm(window(), "导入并覆盖当前资料？",
+                "导入会用所选归档完整替换当前学习分类和问答。建议先执行一次“备份导出”。")) return;
         try {
             json.importAndReplace(f.toPath());
             reloadFolders();
@@ -478,12 +600,6 @@ public final class MainView {
         return s;
     }
 
-    private String compact(String text) {
-        if (text == null || text.isBlank()) return "";
-        String s = text.replaceAll("\\s+", " ").trim();
-        return s.length() <= 74 ? s : s.substring(0, 74) + "…";
-    }
-
     private Label label(String text, String cls) {
         Label l = new Label(text);
         l.getStyleClass().add(cls);
@@ -497,12 +613,13 @@ public final class MainView {
     }
 
     private Button softButton(String icon, String text) {
-        Button b = new Button(text);
         Label i = new Label(icon);
         i.getStyleClass().add("button-icon");
-        b.setGraphic(i);
-        b.setContentDisplay(ContentDisplay.LEFT);
-        b.setGraphicTextGap(6);
+        Label t = new Label(text);
+        HBox box = new HBox(6, i, t);
+        box.setAlignment(Pos.CENTER);
+        Button b = new Button();
+        b.setGraphic(box);
         b.getStyleClass().add("soft-button");
         return b;
     }
