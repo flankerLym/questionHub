@@ -18,7 +18,7 @@ import java.util.Set;
 
 public final class ArchiveJsonService {
     public static final int ARCHIVE_VERSION = 1;
-    private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 256L * 1024 * 1024;
 
     private final ObjectMapper mapper = new ObjectMapper()
             .enable(SerializationFeature.INDENT_OUTPUT)
@@ -35,7 +35,7 @@ public final class ArchiveJsonService {
 
     public ArchiveData read(Path file) throws IOException {
         if (!Files.exists(file)) throw new IllegalArgumentException("归档文件不存在");
-        if (Files.size(file) > MAX_FILE_SIZE) throw new IllegalArgumentException("归档文件不能超过 20MB");
+        if (Files.size(file) > MAX_FILE_SIZE) throw new IllegalArgumentException("归档数据过大，不能超过 256MB");
         ArchiveData data;
         try { data = mapper.readValue(file.toFile(), ArchiveData.class); }
         catch (Exception e) { throw new IllegalArgumentException("JSON 文件解析失败", e); }

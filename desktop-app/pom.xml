@@ -31,6 +31,11 @@
             <version>${javafx.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-swing</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.scilab.forge</groupId>
             <artifactId>jlatexmath</artifactId>
             <version>${jlatexmath.version}</version>

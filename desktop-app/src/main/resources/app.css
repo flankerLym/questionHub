@@ -673,3 +673,38 @@
 .answer-panel-clean .answer-editor-pane {
     -fx-min-height: 520;
 }
+
+
+/* ===== Screenshot / full-view / package UX ===== */
+
+.image-tool-label {
+    -fx-text-fill: #657269;
+    -fx-font-size: 10.5px;
+    -fx-font-weight: 700;
+}
+
+.answer-editor-pane .soft-button {
+    -fx-padding: 6 10;
+    -fx-font-size: 11px;
+}
+
+.answer-popup-root {
+    -fx-background-color: #f4f7f2;
+}
+
+.popup-question {
+    -fx-font-size: 19px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #203026;
+    -fx-background-color: #fffefa;
+    -fx-border-color: #dfe6dc;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+    -fx-padding: 12 14;
+}
+
+.answer-popup-root .web-view {
+    -fx-background-color: #fffefa;
+    -fx-border-color: #dfe6dc;
+    -fx-border-radius: 14;
+}

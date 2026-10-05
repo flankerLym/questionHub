@@ -2,7 +2,9 @@ package com.questionhub.desktop;
 
 import com.questionhub.desktop.db.ArchiveRepository;
 import com.questionhub.desktop.db.Database;
-import com.questionhub.desktop.service.*;
+import com.questionhub.desktop.service.ArchivePackageService;
+import com.questionhub.desktop.service.AuthService;
+import com.questionhub.desktop.service.BackupService;
 import com.questionhub.desktop.ui.AppIcons;
 import com.questionhub.desktop.ui.LoginView;
 import com.questionhub.desktop.ui.MainView;
@@ -16,7 +18,7 @@ public final class QuestionHubApp extends Application {
     private Stage stage;
     private Path dataDir;
     private ArchiveRepository repo;
-    private ArchiveJsonService json;
+    private ArchivePackageService archive;
 
     @Override public void start(Stage primaryStage) throws Exception {
         this.stage = primaryStage;
@@ -29,7 +31,7 @@ public final class QuestionHubApp extends Application {
         BackupService.backupIfNeeded(db.dbFile(), dataDir);
         db.init();
         repo = new ArchiveRepository(db);
-        json = new ArchiveJsonService(repo);
+        archive = new ArchivePackageService(repo, dataDir);
         showLogin();
         stage.show();
     }
@@ -40,7 +42,7 @@ public final class QuestionHubApp extends Application {
     }
 
     private void showMain() {
-        MainView view = new MainView(repo, json, dataDir, this::showLogin);
+        MainView view = new MainView(repo, archive, dataDir, this::showLogin);
         setScene(view.root(), 1380, 860);
     }
 

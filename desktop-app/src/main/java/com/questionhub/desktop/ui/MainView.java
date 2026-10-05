@@ -3,7 +3,8 @@ package com.questionhub.desktop.ui;
 import com.questionhub.desktop.db.ArchiveRepository;
 import com.questionhub.desktop.model.Folder;
 import com.questionhub.desktop.model.QaItem;
-import com.questionhub.desktop.service.ArchiveJsonService;
+import com.questionhub.desktop.service.ArchivePackageService;
+import com.questionhub.desktop.service.AssetService;
 import com.questionhub.desktop.util.Ids;
 import com.questionhub.desktop.util.Validation;
 import javafx.collections.FXCollections;
@@ -11,11 +12,15 @@ import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Parent;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
 import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.*;
 import javafx.scene.web.WebView;
 import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 import javafx.stage.Window;
 
 import java.awt.Desktop;
@@ -25,7 +30,8 @@ import java.util.Locale;
 public final class MainView {
     private final BorderPane root = new BorderPane();
     private final ArchiveRepository repo;
-    private final ArchiveJsonService json;
+    private final ArchivePackageService archive;
+    private final AssetService assets;
     private final Path dataDir;
     private final Runnable onLogout;
 
@@ -45,16 +51,21 @@ public final class MainView {
     private final VBox answerEditorPane = new VBox();
     private final Label answerCount = new Label("0 / 50000");
     private final Label answerMode = new Label("阅读模式");
+    private final Button expandAnswer = new Button("放大查看");
     private final Button editAnswer = new Button("编辑整理");
+    private final Button shrinkImage = new Button("图片 −");
+    private final Button growImage = new Button("图片 ＋");
     private final Button cancelAnswer = new Button("取消");
     private final Button saveAnswer = new Button("保存修改");
 
     private boolean editingAnswer;
+    private String activeImageAsset;
 
-    public MainView(ArchiveRepository repo, ArchiveJsonService json, Path dataDir, Runnable onLogout) {
+    public MainView(ArchiveRepository repo, ArchivePackageService archive, Path dataDir, Runnable onLogout) {
         this.repo = repo;
-        this.json = json;
+        this.archive = archive;
         this.dataDir = dataDir;
+        this.assets = new AssetService(dataDir);
         this.onLogout = onLogout;
         build();
         reloadFolders();
@@ -79,13 +90,13 @@ public final class MainView {
         HBox brand = new HBox(11, mark, brandText);
         brand.setAlignment(Pos.CENTER_LEFT);
 
-        Button importBtn = softButton("⇩", "导入资料");
-        importBtn.setTooltip(new Tooltip("用 JSON 归档覆盖当前资料"));
-        importBtn.setOnAction(e -> importJson());
+        Button importBtn = softButton("⇩", "导入数据包");
+        importBtn.setTooltip(new Tooltip("导入完整 QuestionHub 数据包，包含问题、答案和图片"));
+        importBtn.setOnAction(e -> importPackage());
 
-        Button exportBtn = softButton("⇧", "备份导出");
-        exportBtn.setTooltip(new Tooltip("导出完整 JSON 归档"));
-        exportBtn.setOnAction(e -> exportJson());
+        Button exportBtn = softButton("⇧", "备份数据包");
+        exportBtn.setTooltip(new Tooltip("导出完整数据包，问题、答案、截图会一起打包"));
+        exportBtn.setOnAction(e -> exportPackage());
 
         Button folderBtn = softButton("⌂", "存储位置");
         folderBtn.setTooltip(new Tooltip("打开本地数据目录"));
@@ -224,8 +235,6 @@ public final class MainView {
     }
 
     private Parent answerPane() {
-        // 右侧只保留“问题 + 我的整理”，去掉重复标题、说明和时间信息，
-        // 把尽可能多的垂直空间留给长期阅读、代码和公式。
         currentQuestion.setWrapText(true);
         currentQuestion.getStyleClass().add("question-focus-text");
 
@@ -237,23 +246,57 @@ public final class MainView {
 
         answer.setWrapText(true);
         answer.setPromptText("""
-                在这里整理答案、解题思路、代码片段和公式……
+                在这里整理答案、解题思路、代码片段、公式和截图……
 
-                代码块示例：
+                代码块：
                 ```java
                 int ans = 0;
                 ```
 
-                LaTeX 示例：
+                LaTeX：
                 行内公式 $x^2+y^2$
                 独立公式 $$\\frac{a}{b}$$
+
+                截图：
+                Win + Shift + S 截图后，回到这里直接 Ctrl + V。
                 """);
         answer.getStyleClass().addAll("answer-editor", "flat-area");
         answerCount.getStyleClass().add("char-count");
         answer.textProperty().addListener((o, a, b) -> answerCount.setText(b.length() + " / 50000"));
+        answer.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
+            if (editingAnswer && e.isShortcutDown() && e.getCode() == KeyCode.V) {
+                Clipboard clipboard = Clipboard.getSystemClipboard();
+                if (clipboard.hasImage()) {
+                    try {
+                        pasteScreenshot(clipboard);
+                        e.consume();
+                    } catch (Exception ex) {
+                        fail(ex);
+                        e.consume();
+                    }
+                }
+            }
+        });
 
-        Label editorHelp = label("支持普通文本、```代码块```、行内 $LaTeX$ 和 $$独立公式$$", "editor-help");
-        answerEditorPane.getChildren().setAll(editorHelp, answer);
+        Label editorHelp = label(
+                "支持文本、代码、LaTeX；Win+Shift+S 后 Ctrl+V 可插入截图，选中图片标记后可缩放",
+                "editor-help");
+
+        shrinkImage.getStyleClass().add("soft-button");
+        shrinkImage.setTooltip(new Tooltip("将当前截图缩小 10%"));
+        shrinkImage.setOnAction(e -> resizeCurrentImage(-10));
+
+        growImage.getStyleClass().add("soft-button");
+        growImage.setTooltip(new Tooltip("将当前截图放大 10%"));
+        growImage.setOnAction(e -> resizeCurrentImage(10));
+
+        HBox imageTools = new HBox(7,
+                label("截图", "image-tool-label"),
+                shrinkImage,
+                growImage);
+        imageTools.setAlignment(Pos.CENTER_LEFT);
+
+        answerEditorPane.getChildren().setAll(editorHelp, imageTools, answer);
         answerEditorPane.setSpacing(8);
         answerEditorPane.getStyleClass().add("answer-editor-pane");
         VBox.setVgrow(answer, Priority.ALWAYS);
@@ -272,10 +315,15 @@ public final class MainView {
         Label pen = new Label("✎");
         pen.getStyleClass().add("editor-toolbar-icon");
         Label editorTitle = label("我的整理", "editor-toolbar-title");
-        Label editorHint = label("代码与 LaTeX 会在阅读模式中排版显示", "editor-toolbar-hint");
+        Label editorHint = label("代码、公式和截图都会在阅读模式中排版显示", "editor-toolbar-hint");
         VBox editorTitles = new VBox(1, editorTitle, editorHint);
 
         answerMode.getStyleClass().add("mode-badge");
+
+        expandAnswer.getStyleClass().add("soft-button");
+        expandAnswer.setTooltip(new Tooltip("在独立大窗口中查看当前整理"));
+        expandAnswer.setOnAction(e -> openAnswerWindow());
+
         editAnswer.getStyleClass().add("soft-button");
         editAnswer.setOnAction(e -> beginAnswerEdit());
 
@@ -285,7 +333,8 @@ public final class MainView {
         saveAnswer.getStyleClass().add("primary-button");
         saveAnswer.setOnAction(e -> saveAnswer());
 
-        HBox toolbar = new HBox(9, pen, editorTitles, spacer(), answerMode, answerCount, cancelAnswer, editAnswer, saveAnswer);
+        HBox toolbar = new HBox(9, pen, editorTitles, spacer(),
+                answerMode, answerCount, cancelAnswer, expandAnswer, editAnswer, saveAnswer);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.getStyleClass().add("editor-toolbar");
 
@@ -383,6 +432,7 @@ public final class MainView {
         }
 
         editAnswer.setDisable(!ok);
+        expandAnswer.setDisable(!ok);
         saveAnswer.setDisable(!ok);
     }
 
@@ -414,6 +464,8 @@ public final class MainView {
 
         editAnswer.setVisible(!editing);
         editAnswer.setManaged(!editing);
+        expandAnswer.setVisible(!editing);
+        expandAnswer.setManaged(!editing);
         saveAnswer.setVisible(editing);
         saveAnswer.setManaged(editing);
         cancelAnswer.setVisible(editing);
@@ -432,8 +484,111 @@ public final class MainView {
     }
 
     private void renderAnswer(String text, String emptyText) {
-        answerPreview.getEngine().loadContent(AnswerRenderer.toHtml(text, emptyText), "text/html");
+        answerPreview.getEngine().loadContent(AnswerRenderer.toHtml(text, emptyText, dataDir), "text/html");
     }
+
+    private void pasteScreenshot(Clipboard clipboard) throws Exception {
+        var image = clipboard.getImage();
+        if (image == null) return;
+
+        String file = assets.saveImage(image);
+        String token = AssetService.imageToken(file, 80);
+
+        int start = answer.getSelection().getStart();
+        int end = answer.getSelection().getEnd();
+        String all = answer.getText();
+
+        String prefix = start > 0 && all.charAt(start - 1) != '\n' ? "\n" : "";
+        String suffix = end < all.length() && all.charAt(end) != '\n' ? "\n" : "";
+        String insert = prefix + token + suffix;
+
+        answer.replaceText(start, end, insert);
+        int tokenStart = start + prefix.length();
+        activeImageAsset = file;
+        answer.selectRange(tokenStart, tokenStart + token.length());
+    }
+
+    private void resizeCurrentImage(int delta) {
+        try {
+            ImageToken token = findCurrentImageToken();
+            if (token == null) {
+                Dialogs.info(window(), "先选择一张截图",
+                        "把光标放到图片标记上，或刚粘贴截图后直接点击“图片 − / 图片 ＋”。");
+                return;
+            }
+
+            int width = Math.max(20, Math.min(100, token.width() + delta));
+            String replacement = AssetService.imageToken(token.file(), width);
+            answer.replaceText(token.start(), token.end(), replacement);
+            answer.selectRange(token.start(), token.start() + replacement.length());
+            activeImageAsset = token.file();
+        } catch (Exception e) {
+            fail(e);
+        }
+    }
+
+    private ImageToken findCurrentImageToken() {
+        String text = answer.getText();
+        int caret = answer.getCaretPosition();
+        java.util.regex.Matcher m = AssetService.IMAGE_TOKEN.matcher(text);
+        ImageToken fallback = null;
+
+        while (m.find()) {
+            String file = m.group(1);
+            int width = Integer.parseInt(m.group(2));
+
+            if (caret >= m.start() && caret <= m.end()) {
+                return new ImageToken(m.start(), m.end(), file, width);
+            }
+            if (activeImageAsset != null && activeImageAsset.equals(file)) {
+                fallback = new ImageToken(m.start(), m.end(), file, width);
+            }
+        }
+        return fallback;
+    }
+
+    private void openAnswerWindow() {
+        QaItem item = questionList.getSelectionModel().getSelectedItem();
+        if (item == null) return;
+
+        WebView web = new WebView();
+        web.setContextMenuEnabled(false);
+        web.getEngine().loadContent(
+                AnswerRenderer.toHtml(item.answer(), "这条问题还没有整理答案。", dataDir),
+                "text/html");
+
+        Label question = new Label(item.question());
+        question.setWrapText(true);
+        question.getStyleClass().add("popup-question");
+
+        Label hint = new Label("Esc 关闭窗口 · 可以使用系统窗口按钮继续最大化/还原");
+        hint.getStyleClass().add("small-muted");
+
+        VBox title = new VBox(3, question, hint);
+        BorderPane pane = new BorderPane();
+        pane.getStyleClass().add("answer-popup-root");
+        pane.setTop(title);
+        pane.setCenter(web);
+        BorderPane.setMargin(title, new Insets(16, 20, 12, 20));
+        BorderPane.setMargin(web, new Insets(0, 14, 14, 14));
+
+        Stage stage = new Stage();
+        AppIcons.apply(stage);
+        if (window() != null) stage.initOwner(window());
+        stage.setTitle("QuestionHub · " + item.question());
+        Scene scene = new Scene(pane, 1200, 820);
+        scene.getStylesheets().add(getClass().getResource("/app.css").toExternalForm());
+        scene.setOnKeyPressed(e -> {
+            if (e.getCode() == KeyCode.ESCAPE) stage.close();
+        });
+        stage.setScene(scene);
+        stage.setMinWidth(900);
+        stage.setMinHeight(650);
+        stage.show();
+        stage.setMaximized(true);
+    }
+
+    private record ImageToken(int start, int end, String file, int width) {}
 
     private void createFolder() {
         try {
@@ -526,36 +681,51 @@ public final class MainView {
         } catch (Exception e) { fail(e); }
     }
 
-    private void importJson() {
+    private void importPackage() {
         if (editingAnswer) {
-            Dialogs.info(window(), "请先保存当前整理", "正在编辑内容，请先保存或取消编辑后再导入资料。");
+            Dialogs.info(window(), "请先保存当前整理", "正在编辑内容，请先保存或取消编辑后再导入数据包。");
             return;
         }
+
         FileChooser fc = new FileChooser();
-        fc.setTitle("导入 QuestionHub 学习归档");
-        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("QuestionHub JSON 归档", "*.json"));
+        fc.setTitle("导入 QuestionHub 完整数据包");
+        fc.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("QuestionHub 数据包 (*.qhb, *.zip)", "*.qhb", "*.zip"));
         var f = fc.showOpenDialog(window());
         if (f == null) return;
+
         if (!Dialogs.confirm(window(), "导入并覆盖当前资料？",
-                "导入会用所选归档完整替换当前学习分类和问答。建议先执行一次“备份导出”。")) return;
+                "数据包会完整替换当前分类和问答，并恢复其中的截图。建议先执行一次“备份数据包”。")) return;
+
         try {
-            json.importAndReplace(f.toPath());
+            archive.importAndReplace(f.toPath());
             reloadFolders();
-            Dialogs.info(window(), "导入完成", "学习资料已经恢复，可以继续使用。");
-        } catch (Exception e) { fail(e); }
+            Dialogs.info(window(), "数据包导入完成", "问题、答案和截图都已恢复，可以继续使用。");
+        } catch (Exception e) {
+            fail(e);
+        }
     }
 
-    private void exportJson() {
+    private void exportPackage() {
         FileChooser fc = new FileChooser();
-        fc.setTitle("导出 QuestionHub 学习归档");
-        fc.getExtensionFilters().add(new FileChooser.ExtensionFilter("QuestionHub JSON 归档", "*.json"));
-        fc.setInitialFileName("questionhub-backup-" + java.time.LocalDate.now() + ".json");
+        fc.setTitle("备份 QuestionHub 完整数据包");
+        fc.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("QuestionHub 数据包 (*.qhb)", "*.qhb"));
+        fc.setInitialFileName("questionhub-backup-" + java.time.LocalDate.now() + ".qhb");
         var f = fc.showSaveDialog(window());
         if (f == null) return;
+
         try {
-            json.exportTo(f.toPath());
-            Dialogs.info(window(), "备份已保存", "完整学习归档已经导出。建议把重要备份同步到自己的网盘或移动硬盘。");
-        } catch (Exception e) { fail(e); }
+            Path target = f.toPath();
+            if (!target.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".qhb")) {
+                target = target.resolveSibling(target.getFileName() + ".qhb");
+            }
+            archive.exportTo(target);
+            Dialogs.info(window(), "完整备份已保存",
+                    "分类、问题、答案和截图已经打包到一个数据包中，可在其他电脑直接导入。");
+        } catch (Exception e) {
+            fail(e);
+        }
     }
 
     private void openDataDir() {

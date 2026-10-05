@@ -1,5 +1,6 @@
 package com.questionhub.desktop.ui;
 
+import com.questionhub.desktop.service.AssetService;
 import org.scilab.forge.jlatexmath.TeXConstants;
 import org.scilab.forge.jlatexmath.TeXFormula;
 import org.scilab.forge.jlatexmath.TeXIcon;
@@ -12,6 +13,8 @@ import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -32,6 +35,10 @@ public final class AnswerRenderer {
     private AnswerRenderer() {}
 
     public static String toHtml(String source, String emptyText) {
+        return toHtml(source, emptyText, null);
+    }
+
+    public static String toHtml(String source, String emptyText, Path dataDir) {
         String text = source == null ? "" : source.replace("\r\n", "\n").replace('\r', '\n');
         StringBuilder body = new StringBuilder();
 
@@ -96,7 +103,13 @@ public final class AnswerRenderer {
                 continue;
             }
 
-            if (trim.isEmpty()) {
+            java.util.regex.Matcher image = AssetService.IMAGE_TOKEN.matcher(trim);
+            if (image.matches()) {
+                body.append(imageBlock(
+                        dataDir,
+                        image.group(1),
+                        Integer.parseInt(image.group(2))));
+            } else if (trim.isEmpty()) {
                 body.append("<div class=\"gap\"></div>");
             } else if (trim.startsWith("### ")) {
                 body.append("<h3>").append(inline(trim.substring(4))).append("</h3>");
@@ -184,6 +197,49 @@ public final class AnswerRenderer {
             }
         }
         return text.length();
+    }
+
+    private static String imageBlock(Path dataDir, String fileName, int width) {
+        int safeWidth = Math.max(20, Math.min(100, width));
+        if (dataDir == null) {
+            return missingImage("图片资源不可用：" + fileName);
+        }
+
+        try {
+            Path assetsDir = dataDir.resolve("assets").toAbsolutePath().normalize();
+            Path file = assetsDir.resolve(fileName).normalize();
+            if (!file.startsWith(assetsDir) || !Files.isRegularFile(file)) {
+                return missingImage("图片不存在：" + fileName);
+            }
+
+            String mime = fileName.toLowerCase().endsWith(".jpg") || fileName.toLowerCase().endsWith(".jpeg")
+                    ? "image/jpeg"
+                    : "image/png";
+
+            byte[] bytes = Files.readAllBytes(file);
+            BufferedImage source = ImageIO.read(file.toFile());
+            int naturalWidth = source == null ? 900 : Math.max(1, source.getWidth());
+
+            // width 表示“相对原图”的缩放比例，而不是“相对窗口”的宽度。
+            // 这样主界面和放大窗口里看到的图片尺寸一致，不会因为窗口变大而被二次放大。
+            int imageWidth = Math.max(80, (int) Math.round(naturalWidth * (safeWidth / 100.0)));
+            int frameWidth = imageWidth + 24; // 左右各 12px 的图片卡片内边距
+
+            String base64 = Base64.getEncoder().encodeToString(bytes);
+            return "<div class=\"answer-image-row\">"
+                    + "<figure class=\"answer-image\" style=\"width:" + frameWidth + "px;max-width:100%;box-sizing:border-box;\">"
+                    + "<img style=\"width:100%;height:auto;max-width:100%;object-fit:contain;\" "
+                    + "src=\"data:" + mime + ";base64," + base64 + "\" alt=\"截图\"/>"
+                    + "<figcaption>截图 · 原图 " + safeWidth + "%</figcaption>"
+                    + "</figure>"
+                    + "</div>";
+        } catch (Exception e) {
+            return missingImage("图片读取失败：" + fileName);
+        }
+    }
+
+    private static String missingImage(String text) {
+        return "<div class=\"missing-image\">" + escape(text) + "</div>";
     }
 
     private static String codeBlock(String language, String code) {
@@ -335,6 +391,41 @@ public final class AnswerRenderer {
                     }
                     .math-block img { max-width: 100%; height: auto; }
                     .latex-fallback.block { display: block; padding: 12px; margin: 10px 0; }
+                    .answer-image-row {
+                      display: flex;
+                      justify-content: center;
+                      align-items: flex-start;
+                      width: 100%;
+                      margin: 18px 0;
+                    }
+                    .answer-image {
+                      margin: 0;
+                      padding: 12px;
+                      background: #f8faf7;
+                      border: 1px solid #e0e6dd;
+                      border-radius: 14px;
+                      text-align: center;
+                      overflow: hidden;
+                    }
+                    .answer-image img {
+                      display: block;
+                      margin: 0 auto;
+                      border-radius: 8px;
+                      box-shadow: 0 4px 16px rgba(48,66,53,.10);
+                    }
+                    .answer-image figcaption {
+                      margin-top: 8px;
+                      color: #8a958c;
+                      font-size: 11px;
+                    }
+                    .missing-image {
+                      margin: 12px 0;
+                      padding: 12px;
+                      border: 1px dashed #d8a6a3;
+                      border-radius: 10px;
+                      color: #a65450;
+                      background: #fff7f6;
+                    }
                     ::selection { background: #dceadd; }
                   </style>
                 </head>
